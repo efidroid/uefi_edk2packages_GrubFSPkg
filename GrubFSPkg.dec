@@ -17,7 +17,7 @@
 
 [Defines]
   DEC_SPECIFICATION              = 0x00010005
-  PACKAGE_NAME                   = efifs
+  PACKAGE_NAME                   = GrubFSPkg
   PACKAGE_GUID                   = D65E40B8-BC4B-4625-9E5C-17C5726C39C3
   PACKAGE_VERSION                = 0.6
 
