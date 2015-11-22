@@ -23,7 +23,7 @@
 /* Not defined in gnu-efi yet */
 EFI_GUID ShellVariable = SHELL_VARIABLE_GUID;
 
-static UINTN PrintNone(IN CHAR16 *fmt, ... ) { return 0; }
+static UINTN PrintNone(IN CONST CHAR16 *fmt, ... ) { return 0; }
 Print_t PrintError = PrintNone;
 Print_t PrintWarning = PrintNone;
 Print_t PrintInfo = PrintNone;

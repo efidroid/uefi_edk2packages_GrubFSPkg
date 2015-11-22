@@ -108,7 +108,7 @@
 
 #define _CR BASE_CR
 
-typedef UINTN (*Print_t)        (IN CHAR16 *fmt, ... );
+typedef UINTN (*Print_t)        (IN CONST CHAR16 *fmt, ... );
 extern Print_t PrintError;
 extern Print_t PrintWarning;
 extern Print_t PrintInfo;
