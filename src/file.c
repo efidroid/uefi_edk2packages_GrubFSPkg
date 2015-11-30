@@ -540,6 +540,7 @@ FileGetInfo(EFI_FILE_HANDLE This, EFI_GUID *Type, UINTN *Len, VOID *Data)
 	EFI_GRUB_FILE *File = _CR(This, EFI_GRUB_FILE, EfiFile);
 	EFI_FILE_SYSTEM_INFO *FSInfo = (EFI_FILE_SYSTEM_INFO *) Data;
 	EFI_FILE_INFO *Info = (EFI_FILE_INFO *) Data;
+	EFI_FILE_SYSTEM_VOLUME_LABEL *VInfo = (EFI_FILE_SYSTEM_VOLUME_LABEL *) Data;
 	EFI_TIME Time;
 	CHAR8* label;
 
@@ -633,7 +634,22 @@ FileGetInfo(EFI_FILE_HANDLE This, EFI_GUID *Type, UINTN *Len, VOID *Data)
 					StrLen(FSInfo->VolumeLabel) * sizeof(CHAR16);
 		}
 		return EFI_SUCCESS;
+    } else if (CompareMem(Type, &gEfiFileSystemVolumeLabelInfoIdGuid, sizeof(*Type)) == 0) {
+		Status = GrubLabel(File, &label);
+		if (EFI_ERROR(Status)) {
+			PrintStatusError(Status, L"Could not read disk label");
+		} else {
+			if (*Len < AsciiStrLen(label) * sizeof(CHAR16)) {
+				*Len = AsciiStrLen(label) * sizeof(CHAR16);
+				return EFI_BAD_BUFFER_SIZE;
+			}
 
+			Status = Utf8ToUtf16NoAlloc(label, VInfo->VolumeLabel, *Len);
+			if (EFI_ERROR(Status)) {
+				return Status;
+			}
+		}
+		return EFI_SUCCESS;
 	} else {
 
 		Print(L"'%s': Cannot get information of type ", FileName(File));
