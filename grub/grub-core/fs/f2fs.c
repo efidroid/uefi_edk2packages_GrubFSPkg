@@ -40,9 +40,6 @@ GRUB_MOD_LICENSE ("GPLv3+");
 #define F2FS_SUPER_OFFSET1	((F2FS_SUPER_OFFSET + F2FS_BLKSIZE) >>	\
 						GRUB_DISK_SECTOR_BITS)
 
-/* 12 bits for 4096 bytes */
-#define F2FS_MAX_LOG_SECTOR_SIZE	12
-
 /* 9 bits for 512 bytes */
 #define F2FS_MIN_LOG_SECTOR_SIZE	9
 
@@ -128,6 +125,8 @@ enum FILE_TYPE
   F2FS_FT_SYMLINK = 7,
 };
 
+#define MAX_VOLUME_NAME		512
+
 struct grub_f2fs_superblock
 {
   grub_uint32_t magic;
@@ -149,7 +148,7 @@ struct grub_f2fs_superblock
   grub_uint32_t node_ino;
   grub_uint32_t meta_ino;
   grub_uint8_t uuid[16];
-  grub_uint16_t volume_name[512];
+  grub_uint16_t volume_name[MAX_VOLUME_NAME];
   grub_uint32_t extension_count;
   grub_uint8_t extension_list[F2FS_MAX_EXTENSION][8];
   grub_uint32_t cp_payload;
@@ -309,7 +308,7 @@ struct grub_f2fs_dir_iter_ctx
   struct grub_f2fs_data *data;
   grub_fshelp_iterate_dir_hook_t hook;
   void *hook_data;
-  grub_uint32_t *bitmap;
+  grub_uint8_t *bitmap;
   grub_uint8_t (*filename)[F2FS_SLOT_LEN];
   struct grub_f2fs_dir_entry *dentry;
   int max;
@@ -325,9 +324,9 @@ struct grub_f2fs_dir_ctx
 static grub_dl_t my_mod;
 
 static inline int
-grub_generic_test_bit (int nr, const grub_uint32_t *addr)
+grub_f2fs_test_bit_le (int nr, const grub_uint8_t *addr)
 {
-  return 1UL & (addr[nr / 32] >> (nr & 31));
+  return addr[nr >> 3] & (1 << (nr & 7));
 }
 
 static inline char *
@@ -346,10 +345,9 @@ static inline grub_uint32_t
 __start_cp_addr (struct grub_f2fs_data *data)
 {
   struct grub_f2fs_checkpoint *ckpt = &data->ckpt;
-  grub_uint64_t ckpt_version = grub_le_to_cpu64 (ckpt->checkpoint_ver);
   grub_uint32_t start_addr = data->cp_blkaddr;
 
-  if (!(ckpt_version & 1))
+  if (!(ckpt->checkpoint_ver & grub_cpu_to_le64_compile_time(1)))
     return start_addr + data->blocks_per_seg;
   return start_addr;
 }
@@ -440,7 +438,7 @@ grub_f2fs_test_bit (grub_uint32_t nr, const char *p)
 
   p += (nr >> 3);
   mask = 1 << (7 - (nr & 0x07));
-  return (mask & *p) != 0;
+  return mask & *p;
 }
 
 static int
@@ -457,13 +455,13 @@ grub_f2fs_sanity_check_sb (struct grub_f2fs_superblock *sb)
   log_sectorsize = grub_le_to_cpu32 (sb->log_sectorsize);
   log_sectors_per_block = grub_le_to_cpu32 (sb->log_sectors_per_block);
 
-  if (log_sectorsize > F2FS_MAX_LOG_SECTOR_SIZE)
+  if (log_sectorsize > F2FS_BLK_BITS)
     return -1;
 
   if (log_sectorsize < F2FS_MIN_LOG_SECTOR_SIZE)
     return -1;
 
-  if (log_sectors_per_block + log_sectorsize != F2FS_MAX_LOG_SECTOR_SIZE)
+  if (log_sectors_per_block + log_sectorsize != F2FS_BLK_BITS)
     return -1;
 
   return 0;
@@ -948,7 +946,7 @@ grub_f2fs_check_dentries (struct grub_f2fs_dir_iter_ctx *ctx)
       int name_len;
       int ret;
 
-      if (grub_generic_test_bit (i, ctx->bitmap) == 0)
+      if (grub_f2fs_test_bit_le (i, ctx->bitmap) == 0)
         {
           i++;
           continue;
@@ -999,7 +997,7 @@ grub_f2fs_iterate_inline_dir (struct grub_f2fs_inode *dir,
 
   de_blk = (struct grub_f2fs_inline_dentry *) __inline_addr (dir);
 
-  ctx->bitmap = (grub_uint32_t *) de_blk->dentry_bitmap;
+  ctx->bitmap = de_blk->dentry_bitmap;
   ctx->dentry = de_blk->dentry;
   ctx->filename = de_blk->filename;
   ctx->max = NR_INLINE_DENTRY;
@@ -1051,7 +1049,7 @@ grub_f2fs_iterate_dir (grub_fshelp_node_t dir,
 
       de_blk = (struct grub_f2fs_dentry_block *) buf;
 
-      ctx.bitmap = (grub_uint32_t *) de_blk->dentry_bitmap;
+      ctx.bitmap = de_blk->dentry_bitmap;
       ctx.dentry = de_blk->dentry;
       ctx.filename = de_blk->filename;
       ctx.max = NR_DENTRY_IN_BLOCK;
@@ -1192,21 +1190,24 @@ grub_f2fs_close (grub_file_t file)
   return GRUB_ERR_NONE;
 }
 
-/* TODO: mkfs.f2fs stores label in a wrong way. Should be fixed. */
-static void
-grub_f2fs_unicode_to_ascii (grub_uint8_t *out_buf, grub_uint16_t *in_buf)
+static grub_uint8_t *
+grub_f2fs_utf16_to_utf8 (grub_uint16_t *in_buf_le)
 {
-  grub_uint16_t *pchTempPtr = in_buf;
-  grub_uint8_t *pwTempPtr = out_buf;
+  grub_uint16_t in_buf[MAX_VOLUME_NAME];
+  grub_uint8_t *out_buf;
+  int len = 0;
 
-  while (*pchTempPtr != '\0')
-    {
-      *pwTempPtr = (grub_uint8_t) *pchTempPtr;
-      pchTempPtr++;
-      pwTempPtr++;
-    }
-  *pwTempPtr = '\0';
-  return;
+  out_buf = grub_malloc (MAX_VOLUME_NAME * GRUB_MAX_UTF8_PER_UTF16 + 1);
+  if (!out_buf)
+    return NULL;
+
+  while (*in_buf_le != 0 && len < MAX_VOLUME_NAME) {
+    in_buf[len] = grub_le_to_cpu16 (in_buf_le[len]);
+    len++;
+  }
+
+  *grub_utf16_to_utf8 (out_buf, in_buf, len) = '\0';
+  return out_buf;
 }
 
 static grub_err_t
@@ -1219,12 +1220,7 @@ grub_f2fs_label (grub_device_t device, char **label)
 
   data = grub_f2fs_mount (disk);
   if (data)
-    {
-      *label = grub_zalloc (sizeof (data->sblock.volume_name));
-      if (*label)
-        grub_f2fs_unicode_to_ascii ((grub_uint8_t *) (*label),
-			data->sblock.volume_name);
-    }
+    *label = (char *) grub_f2fs_utf16_to_utf8 (data->sblock.volume_name);
   else
     *label = NULL;
 
