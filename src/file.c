@@ -652,9 +652,9 @@ FileGetInfo(EFI_FILE_HANDLE This, EFI_GUID *Type, UINTN *Len, VOID *Data)
 		return EFI_SUCCESS;
 	} else {
 
-		Print(L"'%s': Cannot get information of type ", FileName(File));
+/*		Print(L"'%s': Cannot get information of type ", FileName(File));
         PrintGuid(Type);
-        Print(L"\n");
+        Print(L"\n"); */
 		return EFI_UNSUPPORTED;
 
 	}
@@ -674,9 +674,9 @@ FileSetInfo(EFI_FILE_HANDLE This, EFI_GUID *Type, UINTN Len, VOID *Data)
 {
 	EFI_GRUB_FILE *File = _CR(This, EFI_GRUB_FILE, EfiFile);
 
-	Print(L"Cannot set information of type ");
+/*	Print(L"Cannot set information of type ");
     PrintGuid(Type);
-    Print(L" for file '%s'\n", FileName(File));
+    Print(L" for file '%s'\n", FileName(File)); */
 
 	return EFI_WRITE_PROTECTED;
 }
@@ -695,7 +695,7 @@ FileFlush(EFI_FILE_HANDLE This)
 {
 	EFI_GRUB_FILE *File = _CR(This, EFI_GRUB_FILE, EfiFile);
 
-	PrintInfo(L"Flush(%llx|'%s')\n", (UINTN)This, FileName(File));
+//	PrintInfo(L"Flush(%llx|'%s')\n", (UINTN)This, FileName(File));
 	return EFI_SUCCESS;
 }
 
@@ -717,7 +717,7 @@ FileOpenVolume(EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *This, EFI_FILE_HANDLE *Root)
 {
 	EFI_FS *FSInstance = _CR(This, EFI_FS, FileIoInterface);
 
-	PrintInfo(L"OpenVolume\n");
+//	PrintInfo(L"OpenVolume\n");
 	*Root = &FSInstance->RootFile->EfiFile;
 
 	return EFI_SUCCESS;
@@ -739,7 +739,7 @@ FSInstall(EFI_FS *This, EFI_HANDLE ControllerHandle)
 	if (!GrubFSProbe(This))
 		return EFI_UNSUPPORTED;
 
-	PrintInfo(L"FSInstall: %s\n", This->DevicePathString);
+//	PrintInfo(L"FSInstall: %s\n", This->DevicePathString);
 
 	/* Initialize the root handle */
 	Status = GrubCreateFile(&This->RootFile, This);
