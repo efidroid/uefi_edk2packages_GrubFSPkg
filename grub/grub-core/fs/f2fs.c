@@ -32,7 +32,8 @@ GRUB_MOD_LICENSE ("GPLv3+");
 
 /* F2FS Magic Number */
 #define F2FS_SUPER_MAGIC	0xF2F52010
-#define CHECKSUM_OFFSET		4092
+#define CHECKSUM_OFFSET		4092		/* must be aligned 4 bytes */
+#define U32_CHECKSUM_OFFSET	(CHECKSUM_OFFSET >> 2)
 
 /* byte-size offset */
 #define F2FS_SUPER_OFFSET	((grub_disk_addr_t)1024)
@@ -485,7 +486,7 @@ static void *
 validate_checkpoint (struct grub_f2fs_data *data, grub_uint32_t cp_addr,
 	grub_uint64_t *version)
 {
-  void *cp_page_1, *cp_page_2;
+  grub_uint32_t *cp_page_1, *cp_page_2;
   struct grub_f2fs_checkpoint *cp_block;
   grub_uint64_t cur_version = 0, pre_version = 0;
   grub_uint32_t crc = 0;
@@ -506,7 +507,7 @@ validate_checkpoint (struct grub_f2fs_data *data, grub_uint32_t cp_addr,
   if (crc_offset != CHECKSUM_OFFSET)
     goto invalid_cp1;
 
-  crc = grub_le_to_cpu32 (*(grub_uint32_t *)((char *)cp_block + crc_offset));
+  crc = grub_le_to_cpu32 (*(cp_page_1 + U32_CHECKSUM_OFFSET));
   if (!grub_f2fs_crc_valid (crc, cp_block, crc_offset))
     goto invalid_cp1;
 
@@ -528,7 +529,7 @@ validate_checkpoint (struct grub_f2fs_data *data, grub_uint32_t cp_addr,
   if (crc_offset != CHECKSUM_OFFSET)
     goto invalid_cp2;
 
-  crc = grub_le_to_cpu32 (*(grub_uint32_t *)((char *)cp_block + crc_offset));
+  crc = grub_le_to_cpu32 (*(cp_page_2 + U32_CHECKSUM_OFFSET));
   if (!grub_f2fs_crc_valid (crc, cp_block, crc_offset))
     goto invalid_cp2;
 
@@ -882,11 +883,8 @@ grub_f2fs_read_file (grub_fshelp_node_t node,
 
   if (inode->i_inline & F2FS_INLINE_DATA)
     {
-      if (pos > filesize || filesize > MAX_INLINE_DATA)
-        {
-          grub_error (GRUB_ERR_BAD_FS, "corrupted inline_data: need fsck");
-          return -1;
-        }
+      if (filesize > MAX_INLINE_DATA)
+        return -1;
       if (len > filesize - pos)
         len = filesize - pos;
 
@@ -1129,6 +1127,7 @@ grub_f2fs_open (struct grub_file *file, const char *name)
 {
   struct grub_f2fs_data *data = NULL;
   struct grub_fshelp_node *fdiro = 0;
+  struct grub_f2fs_inode *inode;
 
   grub_dl_ref (my_mod);
 
@@ -1152,10 +1151,13 @@ grub_f2fs_open (struct grub_file *file, const char *name)
   grub_memcpy (data->inode, &fdiro->inode, sizeof (*data->inode));
   grub_free (fdiro);
 
-  file->size = grub_f2fs_file_size (&(data->inode->i));
+  inode = &(data->inode->i);
+  file->size = grub_f2fs_file_size (inode);
   file->data = data;
   file->offset = 0;
 
+  if (inode->i_inline & F2FS_INLINE_DATA && file->size > MAX_INLINE_DATA)
+    grub_error (GRUB_ERR_BAD_FS, "corrupted inline_data: need fsck");
   return 0;
 
 fail:
