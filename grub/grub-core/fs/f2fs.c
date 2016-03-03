@@ -888,7 +888,7 @@ grub_f2fs_read_file (grub_fshelp_node_t node,
       if (len > filesize - pos)
         len = filesize - pos;
 
-      grub_memcpy (buf + pos, inline_addr + pos, len);
+      grub_memcpy (buf, inline_addr + pos, len);
       return len;
     }
 
