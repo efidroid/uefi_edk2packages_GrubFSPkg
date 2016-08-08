@@ -40,7 +40,7 @@
 #define va_end VA_END
 #define va_arg VA_ARG
 #define memcmp CompareMem
-#define strcpy AsciiStrCpy
+#define strcpy(dst, src) AsciiStrCpyS(dst, AsciiStrSize(src), src)
 #define memmove CopyMem
 #define memset(s,c,n) SetMem(s,n,c)
 #define bzero(s,n) SetMem(s,n,0)
